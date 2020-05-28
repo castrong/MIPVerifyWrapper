@@ -8,6 +8,7 @@ using MIPVerify
 using MathProgBase
 using LinearAlgebra
 using MathProgBase
+using CPUTime
 
 # You can use your solver of choice; I'm using Gurobi for my testing.
 using Gurobi
@@ -55,26 +56,39 @@ mkpath(dirname(output_file))
     Setup and run the query, and write the results to an output file
 =#
 
-# Read in the network
+# Read in the network and convert to MIPVerify's network format
 network = read_nnet(network_file)
 mipverify_network = network_to_mipverify_network(network)
+# Create your objective object
 num_inputs = size(network.layers[1].weights, 2)
 weight_vector = linear_objective_to_weight_vector(objective, length(network.layers[end].bias))
-println("Weight vector: ", weight_vector)
 
-
-
-# Create the problem: network, input constraint, objective, maximize or minimize
+# Read in your center input
 center_input = npzread(input_file)
 println("Nnet output: ", compute_output(network, vec(center_input)[:]))
 println("mipverify output: ", mipverify_network(vec(center_input)[:]))
-num_inputs = size(network.layers[1].weights, 2)
 
-lower = 0.0
-upper = 1.0
+lower = nothing
+upper = nothing
+if class == "MNIST"
+      lower = 0.0
+      upper = 1.0
+elseif class == "TAXI"
+      lower = 0.0
+      upper = 1.0
+elseif class == "ACAS"
+      lower = -Inf
+      upper = Inf
+else
+      println("Class not recognized")
+end
 
+# Use your center input and deltas to get upper and lower bounds on each input variable
 lower_list = max.(center_input - delta_list, lower * ones(num_inputs))
 upper_list = min.(center_input + delta_list, upper * ones(num_inputs))
+
+# Start timing
+CPUtic()
 p1 = get_optimization_problem(
       (num_inputs,),
       mipverify_network,
@@ -86,32 +100,33 @@ p1 = get_optimization_problem(
 println("Setting objective")
 println("Size weight: ", size(weight_vector))
 println("Size output vars: ", size(p1.output_variable))
+
+# Appropriately setting the objective
 if maximize
     @objective(p1.model, Max, sum(weight_vector .* p1.output_variable))
 else
     @objective(p1.model, Min, sum(weight_vector .* p1.output_variable))
 end
 
+# Perform the optimization then pull out the objective value and elapsed time
 solve(p1.model)
-println("\nObjective value: $(getobjectivevalue(p1.model)), input variables: $(getvalue(p1.input_variable))")
+elapsed_time = CPUtoc()
+objective_value = getobjectivevalue(p1.model)
+
+println("\nObjective value: $(objective_value), input variables: $(getvalue(p1.input_variable))")
 
 #elapsed_time = @elapsed result = NeuralOptimization.optimize(optimizer, problem, timeout)
-println("Optimizer: ", optimizer_string)
-println("Name: ", optimizer_name)
-#println("Result objective value: ", result.objective_value)
-#println("Elapsed time: ", elapsed_time)
-#
-# output_file = string(output_file, ".csv") # add on the .csv
-# open(output_file, "w") do f
-#     # Writeout our results
-#     write(f,
-#           basename(network_file), ",",
-#           basename(input_file), ",",
-#           string(objective), ",",
-#           string(replace(delta_list, ","=>comma_replacement)), ",",
-#           string(optimizer), ",",
-#           string(result.status), ",",
-#           string(result.objective_value), ",",
-#           string(elapsed_time), "\n")
-#    close(f)
-# end
+
+println("Result objective value: ", objective_value)
+println("Elapsed time: ", elapsed_time)
+
+ # Write to the output file the status, objective value, and elapsed time
+ output_file = string(output_file, ".csv") # add on the .csv
+ open(output_file, "w") do f
+     # Writeout our results
+     write(f,
+           "success", ",",
+           string(objective_value), ",",
+           string(elapsed_time), "\n")
+    close(f)
+ end
