@@ -17,8 +17,6 @@ include("./activation.jl")
 include("./network.jl")
 include("./util.jl")
 
-
-
 #=
     Read in a description of the query from the command line arguments
     Format:
@@ -83,6 +81,23 @@ else
       println("Class not recognized")
 end
 
+# Run simple problem to avoid Sherlock startup time being counted
+start_time = time()
+println("Starting simple example")
+simple_nnet = read_nnet("./small_nnet.nnet")
+simple_mipverify_network = network_to_mipverify_network(simple_nnet)
+temp_p = get_optimization_problem(
+      (1,),
+      simple_mipverify_network,
+      GurobiSolver(),
+      lower_bounds=[0.0],
+      upper_bounds=[1.0],
+      )
+@objective(temp_p.model, Max, temp_p.output_variable[1])
+solve(temp_p.model)
+println("Finished simple solve in: ", time() - start_time)
+
+# Start the actual problem
 # Use your center input and deltas to get upper and lower bounds on each input variable
 lower_list = max.(center_input - delta_list, lower * ones(num_inputs))
 upper_list = min.(center_input + delta_list, upper * ones(num_inputs))
@@ -114,9 +129,6 @@ elapsed_time = CPUtoc()
 objective_value = getobjectivevalue(p1.model)
 
 println("\nObjective value: $(objective_value), input variables: $(getvalue(p1.input_variable))")
-
-#elapsed_time = @elapsed result = NeuralOptimization.optimize(optimizer, problem, timeout)
-
 println("Result objective value: ", objective_value)
 println("Elapsed time: ", elapsed_time)
 

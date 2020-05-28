@@ -102,8 +102,6 @@ function network_to_mipverify_network(network, label="default_label")
     for layer in network.layers
         weights = copy(transpose(layer.weights)) # copy to get rid of transpose type
         bias = layer.bias
-		println("weight size: ", size(weights))
-		println("bias size: ", size(bias))
         push!(mipverify_layers, MIPVerify.Linear(weights, bias))
         if (layer.activation == ReLU())
             @debug "Adding ReLU layer to MIPVerify representation"
