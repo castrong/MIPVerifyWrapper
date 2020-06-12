@@ -4,15 +4,25 @@ using Interpolations
 using NPZ
 using JuMP
 using ConditionalJuMP
-using MIPVerify
-using MathProgBase
+#using MIPVerify
+
+using Memento
+using AutoHashEquals
+using DocStringExtensions
+using ProgressMeter
+using MAT
+include("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/MIPVerify.jl/src/MIPVerify.jl")
+
 using LinearAlgebra
 using MathProgBase
 using CPUTime
 
+ MIPVerify.setloglevel!("info")
+
 # You can use your solver of choice; I'm using Gurobi for my testing.
 using Gurobi
 
+using Parameters # For a cleaner interface when creating models with named parameters
 include("./activation.jl")
 include("./network.jl")
 include("./util.jl")
@@ -39,6 +49,8 @@ input_file = args[5]
 
 # Radii of our hyperrectangle, objective function
 delta_list = parse.(Float64, split(args[6][2:end-1], comma_replacement))
+
+
 objective_variables = parse.(Int, split(args[7][2:end-1], comma_replacement)) # clip off the [] in the list, then split based on commas, then parse to an int
 objective_coefficients = parse.(Float64, split(args[8][2:end-1], comma_replacement))
 objective = LinearObjective(objective_coefficients, objective_variables)
@@ -66,6 +78,7 @@ center_input = npzread(input_file)
 println("Nnet output: ", compute_output(network, vec(center_input)[:]))
 println("mipverify output: ", mipverify_network(vec(center_input)[:]))
 
+
 lower = nothing
 upper = nothing
 if class == "MNIST"
@@ -84,7 +97,7 @@ end
 # Run simple problem to avoid Sherlock startup time being counted
 start_time = time()
 println("Starting simple example")
-simple_nnet = read_nnet("./small_nnet.nnet")
+simple_nnet = read_nnet("./Networks/small_nnet.nnet")
 simple_mipverify_network = network_to_mipverify_network(simple_nnet)
 temp_p = get_optimization_problem(
       (1,),

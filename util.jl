@@ -34,6 +34,8 @@ The `.nnet` format is borrowed from [NNet](https://github.com/sisl/NNet).
 The format assumes all hidden layers have ReLU activation.
 Keyword argument `last_layer_activation` sets the activation of the last
 layer, and defaults to `Id()`, (i.e. a linear output layer).
+
+1:end-1 used to remove empty list elements from dangling comma in the .nnet file
 """
 function read_nnet(fname::String; last_layer_activation = Id())
     f = open(fname)
@@ -42,18 +44,31 @@ function read_nnet(fname::String; last_layer_activation = Id())
         line = readline(f)
     end
     # number of layers
-    nlayers = parse(Int64, split(line, ",")[1])
+	println(line)
+    nlayers, ninputs, noutputs = parse.(Int64, split(line, ",")[1:end-1])
     # read in layer sizes
     layer_sizes = parse.(Int64, split(readline(f), ",")[1:nlayers+1])
-    # read past additonal information
-    for i in 1:5
-        line = readline(f)
-    end
+
+	line = readline(f) # ignore outdated flag
+
+	# Read lower and upper bounds on each variable
+	input_lower_bounds = parse.(Float64, split(readline(f), ",")[1:end-1])
+	input_upper_bounds = parse.(Float64, split(readline(f), ",")[1:end-1])
+
+	# Read mean and range
+	means = parse.(Float64, split(readline(f), ",")[1:end-1])
+	ranges = parse.(Float64, split(readline(f), ",")[1:end-1])
+
+	normalized_lower = (input_lower_bounds - means[1:ninputs])./ranges[1:ninputs]
+	normalized_upper = (input_upper_bounds - means[1:ninputs])./ranges[1:ninputs]
+	println("Normalized Lower: ", normalized_lower)
+	println("Normalized Upper: ", normalized_upper)
+
     # i=1 corresponds to the input dimension, so it's ignored
     layers = Layer[read_layer(dim, f) for dim in layer_sizes[2:end-1]]
     push!(layers, read_layer(last(layer_sizes), f, last_layer_activation))
 
-    return Network(layers)
+    return Network(layers=layers, lower_bounds=normalized_lower, upper_bounds=normalized_upper)
 end
 
 
@@ -97,15 +112,28 @@ function linear_objective_to_weight_vector(objective::LinearObjective, n::Int)
 end
 
 # Convert between the two types - for now just support id and ReLU activations
-function network_to_mipverify_network(network, label="default_label")
+function network_to_mipverify_network(network, label="default_label", strategy=MIPVerify.mip)
     mipverify_layers = []
+	first_relu_layer = true
     for layer in network.layers
+		# Pull out the weights and bias from the layer - push on a linear layer corresponding to this
+		# we transpose to match MIPVerify's convention with num_input x num_ouput weight matrix expected
         weights = copy(transpose(layer.weights)) # copy to get rid of transpose type
         bias = layer.bias
         push!(mipverify_layers, MIPVerify.Linear(weights, bias))
+
+		# For each ReLU layer we push on with a corresponding tightening strategy
         if (layer.activation == ReLU())
-            @debug "Adding ReLU layer to MIPVerify representation"
-            push!(mipverify_layers, MIPVerify.ReLU())
+			@debug "Adding ReLU layer to MIPVerify representation"
+			println("Strategy: ", strategy)
+			# The first layer we can just use interval arithmetic
+			if (first_relu_layer)
+				println("Using interval arithmetic on first layer")
+				push!(mipverify_layers, MIPVerify.ReLU(MIPVerify.interval_arithmetic))
+				first_relu_layer = false
+			else
+            	push!(mipverify_layers, MIPVerify.ReLU(strategy))
+			end
         elseif (layer.activation == Id())
             @debug "ID layer for MIPVerify is assumed (no explicit representation)"
         else
@@ -115,6 +143,107 @@ function network_to_mipverify_network(network, label="default_label")
     end
     return MIPVerify.Sequential(mipverify_layers, label)
 end
+
+function bounds_from_property_file(property_lines::Array{String, 1},
+	 							   num_inputs::Int64,
+								   lower_bounds::Array{Float64, 1} = zeros(num_inputs),
+								   upper_bounds::Array{Float64, 1} = ones(num_inputs))
+	new_lower_bounds = deepcopy(lower_bounds)
+	new_upper_bounds = deepcopy(upper_bounds)
+
+	println(property_lines)
+	for line in property_lines
+		println("Line: ", line)
+		chunks = split(line, " ")
+		start_chunk = chunks[1]
+		# Check if we're looking at an input constraint
+		if (start_chunk[1] == 'x')
+			println(start_chunk)
+			var_index = parse(Int, start_chunk[2:end]) + 1
+			bound_val = parse(Float64, chunks[3])
+
+			if (chunks[2] == ">=")
+				println("Setting lower bound to ", bound_val)
+				# Take the stricter between the network and property file restrictions
+				new_lower_bounds[var_index] = max(lower_bounds[var_index], bound_val)
+			elseif (chunks[2] == "<=")
+				println("Setting upper bound to ", bound_val)
+				# Take the stricter between the network and property file restrictions
+				new_upper_bounds[var_index] = min(upper_bounds[var_index], bound_val)
+			elseif (chunks[2] == "==")
+				println("Setting both upper and lower to ", bound_val)
+				# Take the stricter between the network and property file restrictions
+				new_lower_bounds[var_index] = max(lower_bounds[var_index], bound_val)
+				new_upper_bounds[var_index] = bound_val
+			else
+				println("Invalid property file, didn't recognize symbol")
+				@assert false
+			end
+		else
+			break
+		end
+	end
+	return new_lower_bounds, new_upper_bounds
+end
+
+# Lines of the form +y0 - y1 <= 0
+function add_output_constraints_from_property_file!(model, output_vars, property_lines)
+
+	for line in property_lines
+		println("Line: ", line)
+		chunks = split(line, " ")
+		start_chunk = chunks[1]
+		if (start_chunk[1] != 'x')
+			# We're looking at an output constraint and not an input constraint
+			@assert start_chunk[1] == '+' || start_chunk[1] == '-' || start_chunk[1] == 'y'
+			scalar = parse(Float64, chunks[end])
+			weight_vector = zeros(length(output_vars))
+			# The last two chunks will be the <= or >= or == and the scalar
+			coefficients = []
+			variables = []
+			for i = 1:length(chunks) - 2
+				coefficient_string = chunks[i][1:findfirst("y", chunks[i])[1]-1]
+				coefficient = 0.0
+				if coefficient_string == "+"
+					coefficient = 1.0
+				elseif coefficient_string == "-"
+					coefficient = -1.0
+				else
+					coefficient = parse(Float64, coefficient_string)
+				end
+				push!(coefficients, coefficient)
+
+				variable_string = chunks[i][findfirst("y", chunks[i])[1]+1:end]
+				variable_index = parse(Int64, variable_string) + 1
+
+				push!(variables, output_vars[variable_index])
+				println("Coefficient: ", coefficient)
+				println("Variable Index: ", variable_index)
+			end
+
+			# Add the constraint corresponding to this line
+			if (chunks[end-1] == "<=")
+				@constraint(model, sum(variables .* coefficients) <= scalar)
+			elseif (chunks[end-1] == ">=")
+				@constraint(model, sum(variables .* coefficients) >= scalar)
+			elseif (chunks[end-1] == "==")
+				@constraint(model, sum(variables .* coefficients) == scalar)
+			end
+		end
+	end
+end
+
+# function add_input_constraints_from_property_file!(input_vars, property_lines)
+#
+# end
+#
+# function add_output_constraints_from_property_file!(input_vars, property_lines)
+#
+#
+# function add_constraints_from_property_file!(input_vars, property_lines)
+# 	add_input_constraints_from_property_file(model, property_lines)
+# 	add_output_constraints_from_property_file(model, property_lines)
+# end
 
 """
 extend_network_with_objective(network::Network, objective::LinearObjective, negative_objective::Bool)
@@ -308,13 +437,18 @@ end
     the network.
 
 """
+
 function get_optimization_problem(
     input_size::Tuple{Int},
-    nn::NeuralNet,
+    nn::MIPVerify.NeuralNet,
     solver::MathProgBase.SolverInterface.AbstractMathProgSolver;
     lower_bounds::AbstractArray{<:Real} = zeros(input_size),
     upper_bounds::AbstractArray{<:Real} = ones(input_size),
-    set_additional_input_constraints::Function = _ -> nothing
+    set_additional_input_constraints::Function = _ -> nothing,
+    tightening_solver::MathProgBase.SolverInterface.AbstractMathProgSolver = MIPVerify.get_default_tightening_solver(
+        solver,
+    ),
+	summary_file_name::String = "",
 )::OptimizationProblem
     @assert(
         size(lower_bounds) == input_size,
@@ -328,20 +462,22 @@ function get_optimization_problem(
         all(lower_bounds .<= upper_bounds),
         "Upper bounds must be element-wise at least the value of the lower bounds"
     )
+	println("Type of tightening optimizer: ", typeof(tightening_solver))
 
     m = Model()
-    JuMP.setsolver(m, solver)
+    # use the solver that we want to use for the bounds tightening
+    JuMP.setsolver(m, tightening_solver)
     input_range = CartesianIndices(input_size)
-
     # v_in is the variable representing the actual range of input values
     v_in = map(
         i -> @variable(m, lowerbound = lower_bounds[i], upperbound = upper_bounds[i]),
         CartesianIndices(input_size)
     )
-
     # these input constraints need to be set before we feed the bounds
     # forward through the network via the call nn(v_in)
     set_additional_input_constraints(v_in)
-
+    v_out = nn(v_in, summary_file_name=summary_file_name)
+    # use the main solver
+    JuMP.setsolver(m, solver)
     return OptimizationProblem(m, v_in, nn(v_in))
 end

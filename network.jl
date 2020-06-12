@@ -32,8 +32,10 @@ A Vector of layers.
     Network([layer1, layer2, layer3, ...])
 See also: [`Layer`](@ref)
 """
-struct Network
+@with_kw mutable struct Network
     layers::Vector{Layer} # layers includes output layer
+    lower_bounds::Vector{Float64} = []
+    upper_bounds::Vector{Float64} = []
 end
 
 """
