@@ -1,4 +1,4 @@
-#ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXU_experimental_v2a_1_1.nnet", "./test_output.csv"]
+1#ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXU_experimental_v2a_1_1.nnet", "./test_output.csv"]
 
 # To run a simple test:
 # module test
@@ -8,7 +8,7 @@
 
 
 using Pkg
-Pkg.activate("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper")
+Pkg.activate("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper")
 using Interpolations
 using NPZ
 using JuMP
@@ -24,7 +24,7 @@ using DocStringExtensions
 using ProgressMeter
 using MAT
 using GLPKMathProgInterface
-include("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/MIPVerify.jl/src/MIPVerify.jl")
+include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/MIPVerify.jl/src/MIPVerify.jl")
 MIPVerify.setloglevel!("info")
 
 # You can use your solver of choice
@@ -32,17 +32,23 @@ using Gurobi
 
 # Include util functions and classes to define our network
 using Parameters # For a cleaner interface when creating models with named parameters
-include("./activation.jl")
-include("./network.jl")
-include("./util.jl")
+include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/activation.jl")
+include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/network.jl")
+include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/util.jl")
 
 # Take in two command line arguments: the property file and the network file
 property_file_name = ARGS[1]
 network_file_name = ARGS[2]
 output_file_name = ARGS[3]
+tightening = ARGS[4]
 
 # Decide on your bound tightening strategy
-strategy = MIPVerify.lp
+if tightening == "lp"
+   strategy = MIPVerify.lp
+end
+if tightening == "mip"
+   strategy = MIPVerify.mip
+end
 
 # Read in the network and convert to a MIPVerify network
 network = read_nnet(network_file_name)
@@ -52,9 +58,9 @@ num_inputs = size(network.layers[1].weights, 2)
 # Run simple problem to avoid Sherlock startup time being counted
 start_time = time()
 println("Starting simple example")
-simple_nnet = read_nnet("./Networks/small_nnet.nnet")
+simple_nnet = read_nnet("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/Networks/small_nnet.nnet")
 simple_mipverify_network = network_to_mipverify_network(simple_nnet)
-simple_property_lines = readlines("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/small_nnet_property.txt")
+simple_property_lines = readlines("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/Properties/small_nnet_property.txt")
 simple_lower_bounds, simple_upper_bounds = bounds_from_property_file(simple_property_lines, 1, simple_nnet.lower_bounds, simple_nnet.upper_bounds)
 
 temp_p = get_optimization_problem(
@@ -78,7 +84,7 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 CPUtic()
 
 main_solver = GurobiSolver()
-tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=400)
+tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=20)
 
 p1 = get_optimization_problem(
       (num_inputs,),
