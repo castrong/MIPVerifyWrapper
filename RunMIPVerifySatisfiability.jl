@@ -1,17 +1,16 @@
-1#ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXU_experimental_v2a_1_1.nnet", "./test_output.csv"]
 
-# RunMIPVerifySatisfiability example_path/acas_property_3.txt example_path/ACASXU_experimental_v2a_2_1.nnet ./test_output.csv
-# RunMIPVerifySatisfiability /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt /Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet ./test.csv
+# julia RunMIPVerifySatisfiability.jl --environment_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --base_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --property_file Properties/acas_property_3.txt --network_file Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet --output_file test_output.txt --tightening lp --timeout_per_node 20
 
 # To run a simple test:
 # module test
-#        ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/Networks/ACASXu/ACASXU_experimental_v2a_1_7.nnet", "./test.csv"]
+#        ARGS = ["--environment_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--base_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--property_file", "Properties/acas_property_3.txt", "--network_file", "Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet", "--output_file", "test_output.txt", "--tightening", "lp", "--timeout_per_node", "20"]
 #        include("RunMIPVerifySatisfiability.jl")
-#        end
+# end
 
 
 using Pkg
-Pkg.activate("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper")
+Pkg.activate("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper")
+
 using Interpolations
 using NPZ
 using JuMP
@@ -26,7 +25,56 @@ using DocStringExtensions
 using ProgressMeter
 using MAT
 using GLPKMathProgInterface
-include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/MIPVerify.jl/src/MIPVerify.jl")
+
+# Interface:
+# RunMIPVerifySatisfiability environment_path base_path property.txt network.nnet output_file strategy timeout_per_node
+# For parsing the arguments to the file
+using ArgParse
+arg_settings = ArgParseSettings()
+@add_arg_table! arg_settings begin
+    "--environment_path"
+        help = "Base path to your files. We will activate this package environment"
+        arg_type = String
+        default = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper"
+    "--base_path"
+        help = "Base path to the network and property files"
+        arg_type = String
+        default = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper"
+    "--property_file"
+        help = "Property file name relative to base_path"
+        arg_type = String
+        required = true
+    "--network_file"
+        help = "Network file name relative to base_path"
+        arg_type = String
+        required = true
+    "--output_file"
+        help = "Output file name relative to base_path"
+        arg_type = String
+        required = true
+    "--tightening"
+        help = "Tightening strategy - mip, lp or interval_analysis"
+        arg_type = String
+        default = "mip"
+    "--timeout_per_node"
+        help = "Timeout in seconds per node"
+        arg_type = Float64
+        default = 20.0
+end
+
+# Parse your arguments
+parsed_args = parse_args(ARGS, arg_settings)
+println(ARGS)
+println(parsed_args)
+environment_path = parsed_args["environment_path"]
+base_path = parsed_args["base_path"]
+property_file_name = string(base_path, parsed_args["property_file"])
+network_file_name = string(base_path, parsed_args["network_file"])
+tightening = parsed_args["tightening"]
+timeout_per_node = parsed_args["timeout_per_node"]
+output_file_name = string(base_path, parsed_args["output_file"])
+
+include(string(environment_path, "MIPVerify.jl/src/MIPVerify.jl"))
 MIPVerify.setloglevel!("info")
 
 # You can use your solver of choice
@@ -34,27 +82,22 @@ using Gurobi
 
 # Include util functions and classes to define our network
 using Parameters # For a cleaner interface when creating models with named parameters
-include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/activation.jl")
-include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/network.jl")
-include("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/util.jl")
+include(string(environment_path, "activation.jl"))
+include(string(environment_path, "network.jl"))
+include(string(environment_path, "util.jl"))
 
-# Take in two command line arguments: the property file and the network file
-property_file_name = ARGS[1]
-network_file_name = ARGS[2]
-output_file_name = ARGS[3]
-tightening = ARGS[4]
 
 # Decide on your bound tightening strategy
-<<<<<<< HEAD
-strategy = MIPVerify.mip
-=======
 if tightening == "lp"
    strategy = MIPVerify.lp
-end
-if tightening == "mip"
+elseif tightening == "mip"
    strategy = MIPVerify.mip
+elseif tightening == "interval_analysis"
+    strategy = MIPVerify.interval_analysis
+else
+    println("Didn't recognize the tightening strategy")
+    @assert false
 end
->>>>>>> d0632318a686f674b44a98bfaf190a1d57e61be0
 
 # Read in the network and convert to a MIPVerify network
 network = read_nnet(network_file_name)
@@ -64,9 +107,9 @@ num_inputs = size(network.layers[1].weights, 2)
 # Run simple problem to avoid Sherlock startup time being counted
 start_time = time()
 println("Starting simple example")
-simple_nnet = read_nnet("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/Networks/small_nnet.nnet")
+simple_nnet = read_nnet(string(base_path, "Networks/small_nnet.nnet"))
 simple_mipverify_network = network_to_mipverify_network(simple_nnet)
-simple_property_lines = readlines("/barrett/scratch/haozewu/understandMIP/MIPVerifyWrapper/Properties/small_nnet_property.txt")
+simple_property_lines = readlines(string(base_path, "Properties/small_nnet_property.txt"))
 simple_lower_bounds, simple_upper_bounds = bounds_from_property_file(simple_property_lines, 1, simple_nnet.lower_bounds, simple_nnet.upper_bounds)
 
 temp_p = get_optimization_problem(
@@ -90,7 +133,7 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 CPUtic()
 
 main_solver = GurobiSolver()
-tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=20)
+tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=1.5)
 
 p1 = get_optimization_problem(
       (num_inputs,),
