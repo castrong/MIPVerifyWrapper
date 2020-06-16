@@ -479,5 +479,5 @@ function get_optimization_problem(
     v_out = nn(v_in, summary_file_name=summary_file_name)
     # use the main solver
     JuMP.setsolver(m, solver)
-    return OptimizationProblem(m, v_in, nn(v_in))
+    return OptimizationProblem(m, v_in, v_out)
 end

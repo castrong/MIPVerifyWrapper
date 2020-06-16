@@ -1,5 +1,8 @@
 #ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXU_experimental_v2a_1_1.nnet", "./test_output.csv"]
 
+# RunMIPVerifySatisfiability example_path/acas_property_3.txt example_path/ACASXU_experimental_v2a_2_1.nnet ./test_output.csv
+# RunMIPVerifySatisfiability /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt /Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet ./test.csv
+
 # To run a simple test:
 # module test
 #        ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "/Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/Networks/ACASXu/ACASXU_experimental_v2a_1_7.nnet", "./test.csv"]
@@ -16,7 +19,6 @@ using ConditionalJuMP
 using LinearAlgebra
 using MathProgBase
 using CPUTime
-
 
 using Memento
 using AutoHashEquals
@@ -42,7 +44,7 @@ network_file_name = ARGS[2]
 output_file_name = ARGS[3]
 
 # Decide on your bound tightening strategy
-strategy = MIPVerify.lp
+strategy = MIPVerify.mip
 
 # Read in the network and convert to a MIPVerify network
 network = read_nnet(network_file_name)
@@ -78,7 +80,7 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 CPUtic()
 
 main_solver = GurobiSolver()
-tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=400)
+tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag=0, TimeLimit=1)
 
 p1 = get_optimization_problem(
       (num_inputs,),
@@ -91,6 +93,8 @@ p1 = get_optimization_problem(
       )
 
 preprocessing_time = CPUtoc()
+
+println("Preprocessing took: ", preprocessing_time)
 
 CPUtic()
 # Add output constraints
