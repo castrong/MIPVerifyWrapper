@@ -25,6 +25,9 @@ using DocStringExtensions
 using ProgressMeter
 using MAT
 using GLPKMathProgInterface
+# You can use your solver of choice
+using Gurobi
+
 
 # Interface:
 # RunMIPVerifySatisfiability environment_path base_path property.txt network.nnet output_file strategy timeout_per_node
@@ -77,9 +80,6 @@ output_file_name = string(base_path, parsed_args["output_file"])
 include(string(environment_path, "MIPVerify.jl/src/MIPVerify.jl"))
 MIPVerify.setloglevel!("info")
 
-# You can use your solver of choice
-using Gurobi
-
 # Include util functions and classes to define our network
 using Parameters # For a cleaner interface when creating models with named parameters
 include(string(environment_path, "activation.jl"))
@@ -92,8 +92,8 @@ if tightening == "lp"
    strategy = MIPVerify.lp
 elseif tightening == "mip"
    strategy = MIPVerify.mip
-elseif tightening == "interval_analysis"
-    strategy = MIPVerify.interval_analysis
+elseif tightening == "interval_arithmetic"
+    strategy = MIPVerify.interval_arithmetic
 else
     println("Didn't recognize the tightening strategy")
     @assert false
@@ -133,7 +133,7 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 CPUtic()
 
 main_solver = GurobiSolver()
-tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=1.5)
+tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=timeout_per_node)
 
 p1 = get_optimization_problem(
       (num_inputs,),

@@ -59,6 +59,10 @@ function read_nnet(fname::String; last_layer_activation = Id())
 	means = parse.(Float64, split(readline(f), ",")[1:end-1])
 	ranges = parse.(Float64, split(readline(f), ",")[1:end-1])
 
+	println(means)
+	println(ranges)
+	println(input_lower_bounds)
+	println(input_upper_bounds)
 	normalized_lower = (input_lower_bounds - means[1:ninputs])./ranges[1:ninputs]
 	normalized_upper = (input_upper_bounds - means[1:ninputs])./ranges[1:ninputs]
 	println("Normalized Lower: ", normalized_lower)
@@ -167,11 +171,11 @@ function bounds_from_property_file(property_lines::Array{String, 1},
 				# Take the stricter between the network and property file restrictions
 				new_lower_bounds[var_index] = max(lower_bounds[var_index], bound_val)
 			elseif (chunks[2] == "<=")
-				println("Setting upper bound to ", bound_val)
+				#println("Setting upper bound to ", bound_val)
 				# Take the stricter between the network and property file restrictions
 				new_upper_bounds[var_index] = min(upper_bounds[var_index], bound_val)
 			elseif (chunks[2] == "==")
-				println("Setting both upper and lower to ", bound_val)
+				#println("Setting both upper and lower to ", bound_val)
 				# Take the stricter between the network and property file restrictions
 				new_lower_bounds[var_index] = max(lower_bounds[var_index], bound_val)
 				new_upper_bounds[var_index] = bound_val
@@ -462,8 +466,6 @@ function get_optimization_problem(
         all(lower_bounds .<= upper_bounds),
         "Upper bounds must be element-wise at least the value of the lower bounds"
     )
-	println("Type of tightening optimizer: ", typeof(tightening_solver))
-
     m = Model()
     # use the solver that we want to use for the bounds tightening
     JuMP.setsolver(m, tightening_solver)
@@ -471,7 +473,7 @@ function get_optimization_problem(
     # v_in is the variable representing the actual range of input values
     v_in = map(
         i -> @variable(m, lowerbound = lower_bounds[i], upperbound = upper_bounds[i]),
-        CartesianIndices(input_size)
+        input_range
     )
     # these input constraints need to be set before we feed the bounds
     # forward through the network via the call nn(v_in)
