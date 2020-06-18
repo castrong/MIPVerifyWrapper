@@ -1,15 +1,59 @@
 
-# julia RunMIPVerifySatisfiability.jl --environment_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --base_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --property_file Properties/acas_property_3.txt --network_file Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet --output_file test_output.txt --tightening lp --timeout_per_node 20
+# julia RunMIPVerifySatisfiability.jl --environment_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --property_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt --network_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet --output_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/test_output.txt --tightening lp --timeout_per_node 20
 
 # To run a simple test:
 # module test
-#        ARGS = ["--environment_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--base_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--property_file", "Properties/acas_property_3.txt", "--network_file", "Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet", "--output_file", "test_output.txt", "--tightening", "lp", "--timeout_per_node", "20"]
+#        ARGS = ["--environment_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--property_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "--network_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet", "--output_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/test_output.txt", "--tightening", "lp", "--timeout_per_node", "20"]
 #        include("RunMIPVerifySatisfiability.jl")
 # end
 
 
 using Pkg
-Pkg.activate("/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper")
+
+# Interface:
+# RunMIPVerifySatisfiability environment_path property.txt network.nnet output_file strategy timeout_per_node
+# For parsing the arguments to the file
+using ArgParse
+arg_settings = ArgParseSettings()
+@add_arg_table! arg_settings begin
+    "--environment_path"
+        help = "Base path to your files. We will activate this package environment"
+        arg_type = String
+        default = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper"
+    "--property_file"
+        help = "Property file name"
+        arg_type = String
+        required = true
+    "--network_file"
+        help = "Network file name"
+        arg_type = String
+        required = true
+    "--output_file"
+        help = "Output file name"
+        arg_type = String
+        required = true
+    "--tightening"
+        help = "Tightening strategy - mip, lp or interval_analysis"
+        arg_type = String
+        default = "mip"
+    "--timeout_per_node"
+        help = "Timeout in seconds per node"
+        arg_type = Float64
+        default = 20.0
+end
+
+# Parse your arguments
+parsed_args = parse_args(ARGS, arg_settings)
+println(ARGS)
+println(parsed_args)
+environment_path = parsed_args["environment_path"]
+property_file_name = parsed_args["property_file"]
+network_file_name = parsed_args["network_file"]
+tightening = parsed_args["tightening"]
+timeout_per_node = parsed_args["timeout_per_node"]
+output_file_name = parsed_args["output_file"]
+
+Pkg.activate(string(environment_path, "MIPVerifyWrapper"))
 
 using Interpolations
 using NPZ
@@ -29,53 +73,6 @@ using GLPKMathProgInterface
 using Gurobi
 
 
-# Interface:
-# RunMIPVerifySatisfiability environment_path base_path property.txt network.nnet output_file strategy timeout_per_node
-# For parsing the arguments to the file
-using ArgParse
-arg_settings = ArgParseSettings()
-@add_arg_table! arg_settings begin
-    "--environment_path"
-        help = "Base path to your files. We will activate this package environment"
-        arg_type = String
-        default = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper"
-    "--base_path"
-        help = "Base path to the network and property files"
-        arg_type = String
-        default = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper"
-    "--property_file"
-        help = "Property file name relative to base_path"
-        arg_type = String
-        required = true
-    "--network_file"
-        help = "Network file name relative to base_path"
-        arg_type = String
-        required = true
-    "--output_file"
-        help = "Output file name relative to base_path"
-        arg_type = String
-        required = true
-    "--tightening"
-        help = "Tightening strategy - mip, lp or interval_analysis"
-        arg_type = String
-        default = "mip"
-    "--timeout_per_node"
-        help = "Timeout in seconds per node"
-        arg_type = Float64
-        default = 20.0
-end
-
-# Parse your arguments
-parsed_args = parse_args(ARGS, arg_settings)
-println(ARGS)
-println(parsed_args)
-environment_path = parsed_args["environment_path"]
-base_path = parsed_args["base_path"]
-property_file_name = string(base_path, parsed_args["property_file"])
-network_file_name = string(base_path, parsed_args["network_file"])
-tightening = parsed_args["tightening"]
-timeout_per_node = parsed_args["timeout_per_node"]
-output_file_name = string(base_path, parsed_args["output_file"])
 
 include(string(environment_path, "MIPVerify.jl/src/MIPVerify.jl"))
 MIPVerify.setloglevel!("info")
@@ -107,9 +104,9 @@ num_inputs = size(network.layers[1].weights, 2)
 # Run simple problem to avoid Sherlock startup time being counted
 start_time = time()
 println("Starting simple example")
-simple_nnet = read_nnet(string(base_path, "Networks/small_nnet.nnet"))
+simple_nnet = read_nnet(string(environment_path, "Networks/small_nnet.nnet"))
 simple_mipverify_network = network_to_mipverify_network(simple_nnet)
-simple_property_lines = readlines(string(base_path, "Properties/small_nnet_property.txt"))
+simple_property_lines = readlines(string(environment_path, "Properties/small_nnet_property.txt"))
 simple_lower_bounds, simple_upper_bounds = bounds_from_property_file(simple_property_lines, 1, simple_nnet.lower_bounds, simple_nnet.upper_bounds)
 
 temp_p = get_optimization_problem(
