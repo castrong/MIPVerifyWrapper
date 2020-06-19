@@ -32,13 +32,18 @@ arg_settings = ArgParseSettings()
         arg_type = String
         required = true
     "--tightening"
-        help = "Tightening strategy - mip, lp or interval_analysis"
+        help = "Tightening strategy - mip, lp or ia"
         arg_type = String
         default = "mip"
     "--timeout_per_node"
         help = "Timeout in seconds per node"
         arg_type = Float64
         default = 20.0
+    "--num_threads"
+        help = "Number of threads"
+        arg_type = Int64
+        default = 1
+
 end
 
 # Parse your arguments
@@ -51,6 +56,7 @@ network_file_name = parsed_args["network_file"]
 tightening = parsed_args["tightening"]
 timeout_per_node = parsed_args["timeout_per_node"]
 output_file_name = parsed_args["output_file"]
+num_threads = parsed_args["num_threads"]
 
 Pkg.activate(environment_path)
 
@@ -88,7 +94,7 @@ if tightening == "lp"
    strategy = MIPVerify.lp
 elseif tightening == "mip"
    strategy = MIPVerify.mip
-elseif tightening == "interval_arithmetic"
+elseif tightening == "ia"
     strategy = MIPVerify.interval_arithmetic
 else
     println("Didn't recognize the tightening strategy")
@@ -128,8 +134,8 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 # Start timing
 CPUtic()
 
-main_solver = GurobiSolver()
-tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=timeout_per_node)
+main_solver = GurobiSolver(Threads=num_threads)
+tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=timeout_per_node, Threads=num_threads)
 
 p1 = get_optimization_problem(
       (num_inputs,),
@@ -175,8 +181,8 @@ output_file = string(output_file_name) # add on the .csv
 open(output_file, "w") do f
     # Writeout our results
     write(f,
-          status == :Infeasible ? "unsat" : "sat", ",",
-          string(preprocessing_time + solve_time), ",",
+          status == :Infeasible ? "unsat" : "sat", " ",
+          string(preprocessing_time + solve_time), " ",
           string(preprocessing_time), "\n")
    close(f)
 end
