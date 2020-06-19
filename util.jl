@@ -208,7 +208,7 @@ function add_output_constraints_from_property_file!(model, output_vars, property
 			for i = 1:length(chunks) - 2
 				coefficient_string = chunks[i][1:findfirst("y", chunks[i])[1]-1]
 				coefficient = 0.0
-				if coefficient_string == "+"
+				if coefficient_string == "+" || coefficient_string == ""
 					coefficient = 1.0
 				elseif coefficient_string == "-"
 					coefficient = -1.0

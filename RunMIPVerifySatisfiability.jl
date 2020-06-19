@@ -1,4 +1,3 @@
-
 # julia RunMIPVerifySatisfiability.jl --environment_path /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/ --property_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt --network_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet --output_file /Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/test_output.txt --tightening lp --timeout_per_node 20
 
 # To run a simple test:
@@ -53,7 +52,7 @@ tightening = parsed_args["tightening"]
 timeout_per_node = parsed_args["timeout_per_node"]
 output_file_name = parsed_args["output_file"]
 
-Pkg.activate(string(environment_path, "MIPVerifyWrapper"))
+Pkg.activate(environment_path)
 
 using Interpolations
 using NPZ
@@ -176,8 +175,8 @@ output_file = string(output_file_name) # add on the .csv
 open(output_file, "w") do f
     # Writeout our results
     write(f,
-          status == :Infeasible ? "unsat" : "sat", " ",
-          string(preprocessing_time + solve_time), " ",
+          status == :Infeasible ? "unsat" : "sat", ",",
+          string(preprocessing_time + solve_time), ",",
           string(preprocessing_time), "\n")
    close(f)
 end
