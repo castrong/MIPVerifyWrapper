@@ -176,8 +176,8 @@ output_file = string(output_file_name) # add on the .csv
 open(output_file, "w") do f
     # Writeout our results
     write(f,
-          status == :Infeasible ? "unsat" : "sat", ",",
-          string(preprocessing_time + solve_time), ",",
+          status == :Infeasible ? "unsat" : "sat", " ",
+          string(preprocessing_time + solve_time), " ",
           string(preprocessing_time), "\n")
    close(f)
 end
