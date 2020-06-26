@@ -3,7 +3,7 @@
 # To run a simple test:
 # module test
 #        ARGS = ["--environment_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--base_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--property_file", "Properties/acas_property_3.txt", "--network_file", "Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet", "--output_file", "test_output.txt", "--tightening", "lp", "--timeout_per_node", "20"]
-#        include("RunMIPVerifySatisfiability.jl")
+#        include("src/GetAllLabelsInRegion.jl")
 # end
 
 
@@ -77,13 +77,13 @@ timeout_per_node = parsed_args["timeout_per_node"]
 output_file_name = string(base_path, parsed_args["output_file"])
 
 include(string(environment_path, "MIPVerify.jl/src/MIPVerify.jl"))
-MIPVerify.setloglevel!("info") # "info", "notice"
+MIPVerify.setloglevel!("notice") # "info", "notice"
 
 # Include util functions and classes to define our network
 using Parameters # For a cleaner interface when creating models with named parameters
-include(string(environment_path, "activation.jl"))
-include(string(environment_path, "network.jl"))
-include(string(environment_path, "util.jl"))
+include(string(environment_path, "src/activation.jl"))
+include(string(environment_path, "src/network.jl"))
+include(string(environment_path, "src/util.jl"))
 
 
 # Decide on your bound tightening strategy
@@ -139,8 +139,7 @@ preprocessing_time = @CPUelapsed p1 = get_optimization_problem(
       main_solver,
       lower_bounds=lower_bounds,
       upper_bounds=upper_bounds,
-      tightening_solver=tightening_solver,
-      summary_file_name="",
+      tightening_solver=tightening_solver
       )
 
 
