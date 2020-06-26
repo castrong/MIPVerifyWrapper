@@ -42,11 +42,11 @@ include(joinpath(base_path, "src/RunQueryUtils.jl"))
 
 # Define the problem parameters
 lower_bounds = [-0.5, -0.5, -0.375, -0.375]
-upper_bounds = [0.5, 0.5, -0.375, -0.375]
+upper_bounds = [-0.4, -0.4, -0.375, -0.375]
 dims_to_split = [1, 2]
 dims_for_area = [1, 2]
-num_divisions = 32
-initial_divisions = (32, 32, 1, 1) # For adaptive split
+num_divisions = 16
+initial_divisions = (16, 16, 1, 1) # For adaptive split
 divisions = (num_divisions, num_divisions, 1, 1) # for the uniform split
 min_diff = 1.0/num_divisions
 network_file = joinpath(base_path,"Networks/VCAS/bugfix_pra01_v5_25HU_1000.nnet")
@@ -76,7 +76,7 @@ num_categories_uniform = length.(category_list_uniform)
 
 # Breakdown with policies filled in
 gr = plot_regions(lower_bound_list_adaptive, upper_bound_list_adaptive, category_list_adaptive, network_path=network_file)
-PGFPlots.save(joinpath(base_path, "Output/test_plot_adaptive.pdf"), gr)
+PGFPlots.save(joinpath(base_path, "test_plot_adaptive.pdf"), gr)
 
 gr = plot_regions(lower_bound_list_uniform, upper_bound_list_uniform, category_list_uniform, network_path=network_file)
 PGFPlots.save(joinpath(base_path, "test_plot_uniform.pdf"), gr)
