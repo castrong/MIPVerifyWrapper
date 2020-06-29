@@ -1,6 +1,6 @@
 ENV["JULIA_DEBUG"] = Main # turns on logging (@debug, @info, @warn) for "included" files
 
-base_path = ARGS[1]
+base_path = pwd() #ARGS[1]
 
 #=
 Find the possible advisories for a given input region
@@ -29,6 +29,7 @@ using JuMP
 using GLPKMathProgInterface
 using MathProgBase
 using CPUTime
+using JLD
 
 MIPVerify.setloglevel!("notice") # "info", "notice"
 
@@ -36,7 +37,7 @@ include(joinpath(base_path, "src/activation.jl"))
 include(joinpath(base_path, "src/network.jl"))
 include(joinpath(base_path, "src/util.jl"))
 include(joinpath(base_path, "src/nnet_functions.jl"))
-include(joinpath(base_path, "src/viz.jl"))
+#include(joinpath(base_path, "src/viz.jl"))
 include(joinpath(base_path, "src/RunQueryUtils.jl"))
 
 
@@ -75,11 +76,11 @@ num_categories_adaptive = length.(category_list_adaptive)
 num_categories_uniform = length.(category_list_uniform)
 
 # Breakdown with policies filled in
-gr = plot_regions(lower_bound_list_adaptive, upper_bound_list_adaptive, category_list_adaptive, network_path=network_file)
-PGFPlots.save(joinpath(base_path, "test_plot_adaptive.pdf"), gr)
+# gr = plot_regions(lower_bound_list_adaptive, upper_bound_list_adaptive, category_list_adaptive, network_path=network_file)
+# PGFPlots.save(joinpath(base_path, "test_plot_adaptive.pdf"), gr)
 
-gr = plot_regions(lower_bound_list_uniform, upper_bound_list_uniform, category_list_uniform, network_path=network_file)
-PGFPlots.save(joinpath(base_path, "test_plot_uniform.pdf"), gr)
+# gr = plot_regions(lower_bound_list_uniform, upper_bound_list_uniform, category_list_uniform, network_path=network_file)
+# PGFPlots.save(joinpath(base_path, "test_plot_uniform.pdf"), gr)
 
 # # Plot
 # histogram(area_percents_adaptive, nbins=10, title="Area percent distribution adaptive")

@@ -241,7 +241,8 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
                               timeout_per_node::Float64 = 0.1,
                               main_timeout::Float64 = 0.2,
                               splitting_heuristic::Symbol = SPLIT_ALL,
-                              choose_max::Bool=true)
+                              choose_max::Bool=true,
+                              save_progress_info::Bool=false)
 
     # Create the MIPVerify Network
     network::Network = read_nnet(network_file)
@@ -275,6 +276,10 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
     finished_categories::Array{Array{Float64, 1}} = []
     finished_area_percents::Array{Float64, 1} = []
 
+    lb_tracker = []
+    ub_tracker = []
+    cat_tracker = Dict()
+
     # While we still have regions to explore
     while (length(lower_bound_stack) > 0)
         println("<--------------- Starting iteration ------------------>")
@@ -292,6 +297,9 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
             tightening_solver,
             main_solver,
             )
+        if save_progress_info
+            cat_tracker[[cur_lower_bounds; cur_upper_bounds]] = categories
+        end
         # Split if we had a timeout or if we found more than 2 categories
         max_diff::Float64 = maximum((cur_upper_bounds - cur_lower_bounds)[dim_options_to_split])
         # Will always split if timeouts - should this be the case?
@@ -301,6 +309,10 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
             new_lower_bounds::Array{Array{Float64, 1}}, new_upper_bounds::Array{Array{Float64, 1}} = split_bounds(cur_lower_bounds, cur_upper_bounds, dims_to_split)
             append!(lower_bound_stack, new_lower_bounds)
             append!(upper_bound_stack, new_upper_bounds)
+            if save_progress_info
+                  push!(lb_tracker, new_lower_bounds)
+                  push!(ub_tracker, new_upper_bounds)
+            end
         else
             cur_area = prod((cur_upper_bounds - cur_lower_bounds)[dims_for_area])
             area_remaining = area_remaining - cur_area
@@ -311,6 +323,10 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
 
             println("Removing percent: ", 100 * cur_area/initial_area)
         end
+    end
+
+    if save_progress_info
+      save("tracked_data.jld", "lb_tracker", lb_tracker, "ub_tracker", ub_tracker, "cat_tracker", cat_tracker)
     end
 
     return finished_lower_bounds, finished_upper_bounds, finished_categories, finished_area_percents
