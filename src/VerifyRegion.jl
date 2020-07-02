@@ -33,12 +33,14 @@ include("RunQueryUtils.jl")
 lower_bounds = [0.0, 0.0, 0.0, 0.0]
 upper_bounds = [0.1, 0.1, 0.2, 0.0]
 network_file = "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/VCAS/bugfix_pra01_v5_25HU_1000.nnet"
-strategy = MIPVerify.mip
-timeout_per_node = 0.5
-main_timeout = 1.0
+strategy = MIPVerify.lp
+timeout_per_node = 0.1
+main_timeout = 0.1
 
 network = read_nnet(network_file)
 num_inputs = size(network.layers[1].weights, 2)
+num_outputs = length(network.layers[end].bias)
+
 mipverify_network = network_to_mipverify_network(network, "test", strategy)
 
 # Define your preprocessing and main solver for MIPVerify
@@ -47,6 +49,7 @@ tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=timeout
 
 categories, had_timeout = get_possible_categories_for_region(
     mipverify_network,
+    [2, 3, 6, 7, 8, 9],
     num_inputs,
     lower_bounds,
     upper_bounds,

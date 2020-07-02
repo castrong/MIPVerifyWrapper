@@ -8,7 +8,7 @@ global const SPLIT_FIRST_DIMENSION = :split_first_dimension
 global const SPLIT_ALL = :split_all
 
 #=
-       Helper function specific to VCAS networks 
+       Helper function specific to VCAS networks
 =#
 function VCAS_bound_to_normalized_bound(bounds)
     mean = [0.000000,0.000000,0.000000,20.000000]
@@ -19,10 +19,14 @@ end
 #=
 Find all possible chosen outputs. In the context of ACAS networks this will correspond
 to all possible advisories within the given region
+
+Returns all categories that it hasn't eliminated - if some timeout then
+they will be included as possible categories
 =#
 
 function get_possible_categories_for_region(
     network::MIPVerify.Sequential,
+    outputs_to_check::Vector{Int64},
     num_inputs::Int64,
     lower_bounds::Vector{Float64},
     upper_bounds::Vector{Float64},
@@ -51,15 +55,15 @@ function get_possible_categories_for_region(
 
     # See which is chosen at the center of your bounds, to mark one off
     center_output = network((lower_bounds + upper_bounds)./2)
-    indices = 1:num_outputs
+    indices = outputs_to_check
     # Find the max or minimum and record that its reachable
     if choose_max
           (~, max_index) = findmax(center_output)
-          indices = indices[1:end .!= max_index]
+          indices = indices[indices .!= max_index]
           push!(reachable_indices, max_index)
     else
           (~, min_index) = findmin(center_output)
-          indices = indices[1:end .!= min_index]
+          indices = indices[indices .!= min_index]
           push!(reachable_indices, min_index)
     end
 
@@ -87,17 +91,18 @@ function get_possible_categories_for_region(
                    push!(reachable_indices, i)
                 else
                    push!(statuses, "timeout")
+                   push!(reachable_indices, i) # still consider it possibly reachable
                    had_timeout = true
                 end
          end
          solve_times[i] = cur_solve_time
     end
-    println(statuses)
-    solve_time = sum(solve_times)
-    println("Preprocessing time: ", preprocessing_time)
-    println("Solve times: ", solve_times)
+    #println(statuses)
+    #solve_time = sum(solve_times)
+    #println("Preprocessing time: ", preprocessing_time)
+    #println("Solve times: ", solve_times)
     #println("Total solve times: ", solve_time)
-    println("Total time: ", preprocessing_time + solve_time)
+    #println("Total time: ", preprocessing_time + solve_time)
     #println("Percent preprocessing: ", round(100 * preprocessing_time / (preprocessing_time + solve_time), digits=2), "%")
 
     return reachable_indices, had_timeout
@@ -172,6 +177,7 @@ function run_equal_breakdown(lower_bounds::Array{Float64, 1},
     # Create the MIPVerify Network
     network::Network = read_nnet(network_file)
     num_inputs::Int64 = size(network.layers[1].weights, 2)
+    num_outputs::Int64 = length(network.layers[end].bias)
     mipverify_network::MIPVerify.Sequential = network_to_mipverify_network(network, "test", strategy)
 
      # Define your preprocessing and main solver for MIPVerify
@@ -200,6 +206,7 @@ function run_equal_breakdown(lower_bounds::Array{Float64, 1},
          cur_upper_bounds = lower_bounds .+ (cur_index_list) .* diff_per_index
          categories, had_timeout = get_possible_categories_for_region(
              mipverify_network,
+             collect(1:num_outputs),
              num_inputs,
              cur_lower_bounds,
              cur_upper_bounds,
@@ -247,6 +254,7 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
     # Create the MIPVerify Network
     network::Network = read_nnet(network_file)
     num_inputs::Int64 = size(network.layers[1].weights, 2)
+    num_outputs::Int64 = length(network.layers[end].bias)
     mipverify_network::MIPVerify.Sequential = network_to_mipverify_network(network, "test", strategy)
 
 
@@ -290,6 +298,7 @@ function run_simple_breakdown(lower_bounds::Array{Float64, 1},
 
         categories, had_timeout = get_possible_categories_for_region(
             mipverify_network,
+            collect(1:num_outputs),
             num_inputs,
             cur_lower_bounds,
             cur_upper_bounds,

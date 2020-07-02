@@ -6,9 +6,8 @@ base_path = pwd() #ARGS[1]
 Find the possible advisories for a given input region
 =#
 
-# To run a simple test:
+# To run a simple test, run the following from the MIPVerifyWrapper directory:
 # module test
-#         ARGS = ["/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/"]
 #        include("src/SimpleRegionBreakdown.jl")
 # end
 
@@ -47,7 +46,7 @@ upper_bounds = [-0.4, -0.4, -0.375, -0.375]
 dims_to_split = [1, 2]
 dims_for_area = [1, 2]
 num_divisions = 16
-initial_divisions = (16, 16, 1, 1) # For adaptive split
+initial_divisions = (8, 8, 1, 1) # For adaptive split
 divisions = (num_divisions, num_divisions, 1, 1) # for the uniform split
 min_diff = 1.0/num_divisions
 network_file = joinpath(base_path,"Networks/VCAS/bugfix_pra01_v5_25HU_1000.nnet")
