@@ -3,7 +3,7 @@
 # To run a simple test:
 # module test
 #        ARGS = ["--environment_path", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/", "--property_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Properties/acas_property_3.txt", "--network_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/Networks/ACASXu/ACASXU_experimental_v2a_2_1.nnet", "--output_file", "/Users/cstrong/Desktop/Stanford/Research/MIPVerifyWrapper/test_output.txt", "--tightening", "lp", "--timeout_per_node", "20"]
-#        include("RunMIPVerifySatisfiability.jl")
+#        include("src/RunMIPVerifySatisfiability.jl")
 # end
 
 
@@ -84,9 +84,9 @@ MIPVerify.setloglevel!("info")
 
 # Include util functions and classes to define our network
 using Parameters # For a cleaner interface when creating models with named parameters
-include(string(environment_path, "activation.jl"))
-include(string(environment_path, "network.jl"))
-include(string(environment_path, "util.jl"))
+include(string(environment_path, "src/activation.jl"))
+include(string(environment_path, "src/network.jl"))
+include(string(environment_path, "src/util.jl"))
 
 
 # Decide on your bound tightening strategy
@@ -134,7 +134,7 @@ lower_bounds, upper_bounds = bounds_from_property_file(property_lines, num_input
 # Start timing
 CPUtic()
 
-main_solver = GurobiSolver(Threads=num_threads)
+main_solver = GurobiSolver(Threads=num_threads, BestBdStop = 0.5)
 tightening_solver = GurobiSolver(Gurobi.Env(), OutputFlag = 0, TimeLimit=timeout_per_node, Threads=num_threads)
 
 p1 = get_optimization_problem(
@@ -143,8 +143,7 @@ p1 = get_optimization_problem(
       main_solver,
       lower_bounds=lower_bounds,
       upper_bounds=upper_bounds,
-      tightening_solver=tightening_solver,
-      summary_file_name=string(output_file_name, ".bounds.txt")
+      tightening_solver=tightening_solver
       )
 
 preprocessing_time = CPUtoc()
@@ -157,7 +156,9 @@ add_output_constraints_from_property_file!(p1.model, p1.output_variable, propert
 
 # Add an objetive of 0 since we're just concerned with feasibility
 # TODO: Find if there's a way to set it to be a feasibility problem that would be more efficient
-@objective(p1.model, Max, 0)
+#@objective(p1.model, Max, 0)
+centroid = (upper_bounds + lower_bounds) / 2
+@objective(p1.model, Min, MIPVerify.get_norm(Inf, (p1.input_variable - centroid)/(upper_bounds - lower_bounds)))
 
 # Solve the feasibility problem
 status = solve(p1.model)
@@ -167,6 +168,12 @@ if (status == :Infeasible)
       println("Infeasible, UNSAT")
 elseif (status == :Optimal)
       println("Optimal, SAT")
+      println(status)
+elseif (status == :InfeasibleOrUnbounded)
+      println("infeasible or unbounded")
+else
+    println("other:")
+    println(status)
 end
 
 # Does it keep any of the old objectives???????
@@ -175,6 +182,7 @@ end
 println("Preprocessing time: ", preprocessing_time)
 println("Solve time: ", solve_time)
 println("Percent preprocessing: ", round(100 * preprocessing_time / (preprocessing_time + solve_time), digits=2), "%")
+println(mipverify_network(centroid))
 
 # Write to the output file the status, objective value, and elapsed time
 output_file = string(output_file_name) # add on the .csv

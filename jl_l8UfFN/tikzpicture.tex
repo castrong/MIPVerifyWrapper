@@ -1,0 +1,30 @@
+\documentclass[tikz]{standalone}
+\usepackage{pgfplots}
+\pgfplotsset{compat=newest}
+\pgfplotsset{every axis legend/.append style={%
+cells={anchor=west}}
+}
+\usepgfplotslibrary{polar}
+\usetikzlibrary{arrows}
+\tikzset{>=stealth'}
+
+\definecolor{ra_1}{rgb}{1.0, 1.0, 1.0}
+\definecolor{ra_2}{rgb}{0.0, 1.0, 1.0}
+\definecolor{ra_3}{rgb}{0.5647058823529412, 0.9333333333333333, 0.5647058823529412}
+\definecolor{ra_4}{rgb}{0.11764705882352941, 0.5647058823529412, 1.0}
+\definecolor{ra_5}{rgb}{0.0, 1.0, 0.0}
+\definecolor{ra_6}{rgb}{0.0, 0.0, 1.0}
+\definecolor{ra_7}{rgb}{0.13333333333333333, 0.5450980392156862, 0.13333333333333333}
+\definecolor{ra_8}{rgb}{0.0, 0.0, 0.5019607843137255}
+\definecolor{ra_9}{rgb}{0.0, 0.39215686274509803, 0.0}
+\begin{document}
+\begin{tikzpicture}[]
+\begin{axis}\addplot+ coordinates {
+(1, 2)
+(2, 4)
+(3, 1)
+};
+\end{axis}
+
+\end{tikzpicture}
+\end{document}
