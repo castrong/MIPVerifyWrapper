@@ -131,7 +131,7 @@ function read_property_file(filename::String, num_inputs::Int64; lower::Float64=
 					done = true
 					plus_index = length(expr_string) + 1 # If you're on the last term adjust the index appropriately
 				else
-					plus_index = plus_index[1] # inidex into the interval we get back from finidfirst 
+					plus_index = plus_index[1] # index into the interval we get back from findfirst
 				end
 
                 # Isolate the current term and parse it
@@ -506,7 +506,6 @@ function interval_map(W::Matrix{N}, l::AbstractVecOrMat, u::AbstractVecOrMat) wh
     u_new = max.(W, zero(N)) * u + min.(W, zero(N)) * l
     return (l_new, u_new)
 end
-
 
 struct OptimizationProblem{T<:Union{JuMP.Variable,JuMP.AffExpr}}
     model::Model
