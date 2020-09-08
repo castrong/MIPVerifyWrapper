@@ -95,98 +95,138 @@ function read_layer(output_dim::Int64, f::IOStream, act = ReLU())
      return Layer(weights, bias, act)
 end
 
-"""
-    read_property_file(filename::String)
+# Given something like 3x1-4x2+5x3+-3x4
+# parse it into [3, 4, 5, -3] and [1, 2, 3, 4]
+# the variables and coefficients involved.
+# string gives the string to parse, char gives the variable character.
+# assume no spaces
+function parse_sum(str, char)
+    # Turn any -- into plus, -+ into +-, "-" into "+-"
+    # after this, all terms are separated by a +
+    str = replace(str, "--"=>"+")
+    str = replace(str, "-+"=>"+-")
+    str = replace(str, "+-"=>"-") # remove any already existing +-s. For example x1 + -x2 --> x1 - x2
+    str = replace(str, "-"=>"+-") # turn any - into a +-. x1 - x2 --> x1 + -x2.
+    # Edge case if we start with a - we end up with +- at the very beginning
+    if (str[1] == '+')
+        str = str[2:end]
+    end
 
-Read a property file and return: (i) an input set, and (ii) an objective, and
-(iii) a boolean that is true if the objective should be maximized.
-Each line in the property file
+    terms = String.(split(str, "+"))
+    coeff_strs = [term[1:findfirst(char, term) - 1] for term in terms]
+    coeff_strs = map(elem -> elem == "" ? "1.0" : elem, coeff_strs) # replace empty coefficients with 1
+    coeff_strs = map(elem -> elem == "-" ? "-1.0" : elem, coeff_strs) # replace - with -1.0
+    coefficients = parse.(Float64, coeff_strs)
+    vars = parse.(Int, [term[findfirst(char, term) + 1:end] for term in terms])
+    return coefficients, vars
+end
 
-For now we assume a hyper-rectangle input set.
-"""
-function read_property_file(filename::String, num_inputs::Int64; lower::Float64=0.0, upper::Float64=1.0)
+function property_file_to_problem(filename::String, network::Network, lower::Float64, upper::Float64)
+    num_inputs = size(network.layers[1].weights, 2)
+    num_outputs = length(network.layers[end].bias)
 
-    # Keep track of the input lower and upper bounds that you accumulate
-    lower_bounds = lower .* ones(num_inputs)
-    upper_bounds = upper .* ones(num_inputs)
-    # Variables and coefficients for objective
-    variables::Vector{Int64} = []
-    coefficients::Vector{Float64} = []
+    input_lower = lower * ones(num_inputs)
+    input_upper = upper * ones(num_inputs)
+    obj_coeffs = []
+    obj_vars = []
     maximize_objective = true
-
+    target = Inf
+    target_dir = "max"
+    center = Vector{Float64}()
+    dims = 1:num_inputs
+    output_obj = false
+    min_adv = false
+    output_halfspaces = Vector{HalfSpace}()
     lines = readlines(filename)
+
     for line in lines
-        line = replace(line, " "=>"") # Remove spaces
+        # Remove spaces from all lines
+        line = replace(line, " " => "")
+        println("Line: ", line)
+
+        # Objective line
         if occursin("Maximize", line) || occursin("Minimize", line)
-            println("Objective line: ", line)
+            output_obj = true
+            # Remove the maximize / minimize part
             maximize_objective = line[1:8] == "Maximize" ? true : false
-            expr_string = line[9:end]
-            done = false
-
-            while !done
-				println("Expression string: ", expr_string)
-                plus_index = findfirst("+", expr_string)
-				# You're finished if you've reached the last term (no + left)
-				if (plus_index == nothing)
-					done = true
-					plus_index = length(expr_string) + 1 # If you're on the last term adjust the index appropriately
-				else
-					plus_index = plus_index[1] # index into the interval we get back from findfirst
-				end
-
-                # Isolate the current term and parse it
-                cur_term = expr_string[1:plus_index-1]
-                loc_y = findfirst("y", cur_term)[1]
-                @assert loc_y != nothing "didn't find a y in this term"
-                coefficient_string = cur_term[1:loc_y-1]
-                if (coefficient_string == "-")
-                    coefficient = -1.0
-                elseif (coefficient_string == "")
-                    coefficient = 1.0
-                else
-                    coefficient = parse(Float64, coefficient_string)
-                end
-                variable = parse(Int64, cur_term[loc_y + 1:end]) + 1 # +1 in index since property file starts indexing from 0
-
-                # Add the coefficient and variable to the list
-                push!(coefficients, coefficient)
-                push!(variables, variable)
-
-                # Update your expr_string to cut off the first term
-                expr_string = expr_string[plus_index+1:end]
-            end
-        elseif occursin("x", line)
-            # Handle each type of comparator
-            if (occursin("<=", line))
-                comparator_index = findfirst("<=", line)
-                x_index = findfirst("x", line)[1]
-                variable_index = parse(Int64, line[x_index+1:comparator_index[1]-1])  # go from after x to before comparator
-                scalar = parse(Float64, line[comparator_index[2]+1:end])
-                upper_bounds[variable_index + 1] = min(upper, scalar) # +1 in index since property file starts indexing from 0
-            elseif (occursin(">=", line))
-                comparator_index = findfirst(">=", line)
-				println(line)
-                x_index = findfirst("x", line)[1]
-                variable_index = parse(Int64, line[x_index+1:comparator_index[1]-1])  # go from after x to before comparator
-                scalar = parse(Float64, line[comparator_index[2]+1:end])
-                lower_bounds[variable_index + 1] = max(lower, scalar) # +1 in index since property file starts indexing from 0
-            elseif (occursin("==", line)) # is it == or =?
-                comparator_index = findfirst("==", line)
-                x_index = findfirst("x", line)[1]
-                variable_index = parse(Int64, line[x_index+1:comparator_index[1]-1]) # go from after x to before comparator
-                scalar = parse(Float64, line[comparator_index[2]+1:end])
-                lower_bounds[variable_index + 1] = max(lower, scalar) # +1 in index since property file starts indexing from 0
-                upper_bounds[variable_index + 1] = min(upper, scalar)
+            line = line[length("Maximize")+1:end]
+            obj_coeffs, obj_vars = parse_sum(line, 'y')
+            obj_vars = obj_vars .+ 1 # switch to julia indexing from 1
+            println("Obj coeffs: ", obj_coeffs, " Obj vars: ", obj_vars)
+        elseif occursin("MinimumInputPerturbation", line)
+            min_adv = true
+            line = line[length("MinimumInputPerturbation")+1:end]
+            if (line == "all")
+                dims = collect(1:num_inputs)
             else
-                @assert false string("Unrecognized comparator: ", line)
+                dims = parse.(Int64, split(line, ","))
             end
+            println("Dims: ", dims)
+        elseif occursin("Center", line)
+            center = parse.(Float64, split(line[length("Center")+1:end], ","))
+            println("Center: ", center)
+        elseif occursin("Target", line)
+            line = line[length("Target")+1:end]
+            target_str, target_dir = split(line, ",")
+            target = parse(Int, target_str) + 1 # switch to julia indexing from 1
+            println("Target: ", target, " dir: ", target_dir)
+        # Must be an input or an output constraint
         else
-            @assert false string("Unrecognized line in property file: ", line)
+            var_char = 'x'
+            if (occursin('y', line))
+                var_char = 'y'
+            end
+            comparator = occursin("<=", line) ? "<=" : ">="
+            comparator_start = findfirst(comparator, line)[1]
+            coeffs, vars = parse_sum(line[1:comparator_start-1], var_char)
+            vars = vars .+ 1 # switch to julia indexing from 1
+            scalar = parse(Float64, line[comparator_start+2:end])
+            println("Coeffs: ", coeffs, " Vars: ", vars, " Scalar: ", scalar)
+
+            if (var_char == 'x')
+                @assert (length(coeffs) == 1 && coeffs[1] == 1.0)  # make sure that we only have upper or lower bounds on the input
+                if (comparator == "<=")
+                    input_upper[vars[1]] = clamp(scalar, lower, upper)
+                else
+                    input_lower[vars[1]] = clamp(scalar, lower, upper)
+                end
+            else
+                expanded_coeffs = zeros(num_outputs)
+                expanded_coeffs[vars] = coeffs
+                sign_flip = comparator == ">=" ? -1.0 : 1.0 # sign to put into standard form of c^T x <= b
+                # Otherwise add a halfspace to your output set
+                push!(output_halfspaces, HalfSpace(sign_flip * expanded_coeffs, sign_flip * scalar))
+            end
         end
     end
 
-    # Return the hyperrectangle, the objective, and whether to maximize or minimize
-    return Hyperrectangle(low=lower_bounds, high=upper_bounds), LinearObjective(coefficients, variables), maximize_objective
+    # Return an output objective problem
+    @assert !(output_obj && min_adv) "Both output and min_adv objectives found in file"
+    println("lower: ", input_lower)
+    println("Upper: ", input_upper)
+    if (output_obj)
+        return OutputOptimizationProblem(
+                                            network=network,
+                                            input=Hyperrectangle(low=input_lower, high=input_upper),
+                                            objective=LinearObjective(obj_coeffs, obj_vars),
+                                            max=maximize_objective,
+                                            lower=lower,
+                                            upper=upper
+                                        )
+    elseif(min_adv)
+        return MinPerturbationProblem(
+                                        network=network,
+                                        center=center,
+                                        target=target,
+                                        target_dir=target_dir,
+                                        dims=dims,
+                                        input=Hyperrectangle(low=input_lower, high=input_upper),
+                                        output=HPolytope([output_halfspaces...]),
+                                        norm_order=Inf
+                                     )
+    else
+        @assert false "No objective found"
+    end
 end
 
 """
@@ -595,4 +635,105 @@ function parse_mipverify_string(optimizer_string)
 	return backend_optimizer, threads, strategy, preprocess_timeout_per_node
 
 
+end
+
+
+function optimize(main_solver, tightening_solver, problem::OutputOptimizationProblem)
+		input_set, objective, maximize_objective = problem.input, problem.objective, problem.max
+
+		CPUtic()
+		opt_problem = get_optimization_problem(
+		      (num_inputs,),
+		      mipverify_network,
+		      main_solver,
+		      lower_bounds=low(input_set),
+		      upper_bounds=high(input_set),
+			  tightening_solver=tightening_solver,
+			  summary_file_name=string(result_file, ".bounds.txt")
+		      )
+
+		preprocess_time = CPUtoc()
+		CPUtic()
+
+		# Appropriately setting the objective
+		if maximize_objective
+			@objective(opt_problem.model, Max, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
+		else
+			@objective(opt_problem.model, Min, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
+		end
+		# Perform the optimization then pull out the objective value and elapsed time
+		solve(opt_problem.model)
+		main_solve_time = CPUtoc()
+
+		opt_input = getvalue.(opt_problem.input_variable)
+		opt_objective = getobjectivevalue(opt_problem.model)
+		return Result(:success, opt_input, opt_objective), preprocess_time, main_solve_time
+end
+
+function optimize(main_solver, tightening_solver, problem::MinPerturbationProblem)
+	CPUtic()
+	opt_problem = get_optimization_problem(
+		  (num_inputs,),
+		  mipverify_network,
+		  main_solver,
+		  lower_bounds=low(problem.input),
+		  upper_bounds=high(problem.input),
+		  tightening_solver=tightening_solver,
+		  summary_file_name=string(result_file, ".bounds.txt")
+		  )
+
+	preprocess_time = CPUtoc()
+	CPUtic()
+
+	# Add output constraints
+	A, b = tosimplehrep(problem.output)
+	for i in 1:size(A, 1)
+		row = A[i, :]
+		@constraint(opt_problem.model, row * opt_problem.output_variable <= b[i])
+	end
+
+	# Introduce the optimization variable epsilon
+	epsilon = @variable(opt_problem.model, epsilon_internal)
+	# Constrain it to be >= 0, and <= the max interval
+	@constraint(opt_problem.model, epsilon >= 0.0)
+	@constraint(opt_problem.model, epsilon <= maximum(problem.input.radius))
+	println("Constraining to be less than: ", maximum(problem.input.radius))
+
+	for dim in dims
+		@constraint(opt_problem.model, -epsilon <= opt_problem.input_variable[dim] - problem.center[dim] <= epsilon)
+		println("Constraining dim ", dim)
+	end
+
+	# Add output constraints
+	A, b = tosimplehrep(problem.output)
+	@constraint(opt_problem.model, A * opt_problem.output_variable .<= b)
+
+	# Add in the objective
+	@objective(opt_problem.model, Min, epsilon)
+
+	# Solve the problem
+	status = solve(opt_problem.model)
+	main_solve_time = CPUtoc()
+
+	if (status == :Infeasible)
+	      return MinPerturbationResult(:none_found, [Inf], Inf), preprocess_time, main_solve_time
+	elseif (status == :Optimal)
+		  opt_input = getvalue.(opt_problem.input_variable)
+		  opt_objective = getobjectivevalue(opt_problem.model)
+		  return MinPerturbationResult(:success, opt_input, opt_objective), preprocess_time, main_solve_time
+	else
+		@assert "Unknown status, throwing error"
+	end
+end
+
+
+@with_kw struct MinPerturbationProblem{N<: Number} <: Problem
+	network::Network
+	center::Vector{N}
+	target::Int = Inf
+	target_dir::String = "max"
+	dims::Vector{Int} # Dims that we want to consider as part of the optimization
+	input::Hyperrectangle # Used to add bounds on the input region that we'd like it to hold to
+	output::HPolytope = HPolytope()
+	norm_order::Float64
 end

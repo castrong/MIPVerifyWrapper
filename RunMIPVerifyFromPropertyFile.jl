@@ -10,8 +10,11 @@
     MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=ia_preprocesstimeoutpernode=5 /Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/Networks/ACASXu/ACASXU_experimental_v2a_1_1.nnet /Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/OptimizationProperties/ACASXu/acas_property_optimization_1.txt /Users/cstrong/Desktop/Stanford/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/FGSM.ACASXU_experimental_v2a_1_1.acas_property_optimization_1.txt
 
     To run a quick test:
+
+	--environment_path /Users/castrong/Desktop/Research/NeuralOptimization.jl --optimizer MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0 --network_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/ACASXU_experimental_v2a_1_2.nnet --property_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/acas_property_optimization_4.txt --result_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0.ACASXU_experimental_v2a_1_2.acas_property_optimization_4.txt
+
     module test
-           ARGS = ["--environment_path", "/Users/castrong/Desktop/Research/MIPVerifyWrapper/", "--optimizer", "MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0", "--network_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/AutoTaxi_32Relus_200Epochs_OneOutput.nnet", "--property_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/autotaxi_property_AutoTaxi_17201_transposed_0.01_max.txt", "--result_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0.AutoTaxi_32Relus_200Epochs_OneOutput.autotaxi_property_AutoTaxi_17201_transposed_0.01_max.txt"]
+           ARGS = ["--environment_path", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/", "--optimizer", "MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0", "--network_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/ACASXU_experimental_v2a_1_2.nnet", "--property_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/acas_property_optimization_4.txt", "--result_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0.AutoTaxi_32Relus_200Epochs_OneOutput.autotaxi_property_AutoTaxi_17201_transposed_0.01_max.txt"]
  	   	   include("/Users/castrong/Desktop/Research/MIPVerifyWrapper/RunMIPVerifyFromPropertyFile.jl")
 	end
 
@@ -83,6 +86,7 @@ MIPVerify.setloglevel!("info")
 using Parameters # For a cleaner interface when creating models with named parameters
 include(string(environment_path, "activation.jl"))
 include(string(environment_path, "network.jl"))
+include(string(environment_path, "problem.jl"))
 include(string(environment_path, "util.jl"))
 
 
@@ -146,49 +150,27 @@ if !isfile(result_file)
 		@assert false "Network category unrecognized"
 	end
 
-	input_set, objective, maximize_objective = read_property_file(property_file, num_inputs; lower=lower, upper=upper)
 
-	CPUtic()
-	opt_problem = get_optimization_problem(
-	      (num_inputs,),
-	      mipverify_network,
-	      main_solver,
-	      lower_bounds=low(input_set),
-	      upper_bounds=high(input_set),
-		  tightening_solver=tightening_solver,
-		  summary_file_name=string(result_file, ".bounds.txt")
-	      )
-
-	preprocess_time = CPUtoc()
-	CPUtic()
-
-	# Appropriately setting the objective
-	if maximize_objective
-		@objective(opt_problem.model, Max, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
-	else
-		@objective(opt_problem.model, Min, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
-	end
-	# Perform the optimization then pull out the objective value and elapsed time
-	solve(opt_problem.model)
-	main_solve_time = CPUtoc()
+	problem = property_file_to_problem(property_file, network, lower, upper)
+	result, preprocess_time, main_solve_time = optimize(main_solver, tightening_solver, problem)
 	elapsed_time = preprocess_time + main_solve_time
-	objective_value = getobjectivevalue(opt_problem.model)
-	optimal_input = getvalue.(opt_problem.input_variable)
-	optimal_output = compute_output(network, optimal_input)
-	println("Optimal input: ", optimal_input)
-	println("Optimal output: ", optimal_output)
-	println("Output from mipverify network: ", mipverify_network(optimal_input))
-	println("output from other network: ", compute_output(network, optimal_input))
+
+	optimal_output = compute_output(network, result.input)
+
+	println("Optimal input: ", result.input)
+	println("Optimal output: ", result.objective_value)
+	println("Output from mipverify network: ", mipverify_network(result.input))
+	println("output from other network: ", compute_output(network, result.input))
 
 	open(result_file, "w") do f
 		# Writeout our results - for the optimal output we remove the brackets on the list
-		print(f, "success", ",") # status
-		print(f, string(objective_value), ",") # objective value
+		print(f, result.status == :success ? "success" : "none_found", ",") # status
+		print(f, string(result.objective_value), ",") # objective value
 		print(f, string(elapsed_time), ",") # elapsed time
 		println(f, string(preprocess_time)) # preprocessing time, end this line
 
 		# We assume it was successful here
-		println(f, string(optimal_input)[2:end-1]) # Write optimal input on its own line
+		println(f, string(result.input)[2:end-1]) # Write optimal input on its own line
 		println(f, string(optimal_output)[2:end-1])# Write optimal output on its own line
 
 		close(f)

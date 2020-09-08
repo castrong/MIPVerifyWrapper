@@ -57,7 +57,7 @@ end
 main_solve_time = @CPUelapsed begin
 
       # Create your radius variable
-      epsilon = @variable(opt_problem.model, epsilon)
+      epsilon = @variable(opt_problem.model, epsilon_internal)
 
       # Constrain it to be >= 0, and <= the max interval
       @constraint(opt_problem.model, epsilon >= 0.0)
@@ -74,7 +74,6 @@ main_solve_time = @CPUelapsed begin
       @constraint(opt_problem.model, output_variables[1] - output_variables[3] >= 0)
       @constraint(opt_problem.model, output_variables[1] - output_variables[4] >= 0)
       @constraint(opt_problem.model, output_variables[1] - output_variables[5] >= 0)
-
 
       # Perform the optimization then pull out the objective value and elapsed time
       solve(opt_problem.model)
