@@ -142,7 +142,6 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
     for line in lines
         # Remove spaces from all lines
         line = replace(line, " " => "")
-        println("Line: ", line)
 
         # Objective line
         if occursin("Maximize", line) || occursin("Minimize", line)
@@ -152,7 +151,6 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
             line = line[length("Maximize")+1:end]
             obj_coeffs, obj_vars = parse_sum(line, 'y')
             obj_vars = obj_vars .+ 1 # switch to julia indexing from 1
-            println("Obj coeffs: ", obj_coeffs, " Obj vars: ", obj_vars)
         elseif occursin("MinimumInputPerturbation", line)
             min_adv = true
             line = line[length("MinimumInputPerturbation")+1:end]
@@ -161,15 +159,12 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
             else
                 dims = parse.(Int64, split(line, ","))
             end
-            println("Dims: ", dims)
         elseif occursin("Center", line)
             center = parse.(Float64, split(line[length("Center")+1:end], ","))
-            println("Center: ", center)
         elseif occursin("Target", line)
             line = line[length("Target")+1:end]
             target_str, target_dir = split(line, ",")
             target = parse(Int, target_str) + 1 # switch to julia indexing from 1
-            println("Target: ", target, " dir: ", target_dir)
         # Must be an input or an output constraint
         else
             var_char = 'x'
@@ -181,7 +176,6 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
             coeffs, vars = parse_sum(line[1:comparator_start-1], var_char)
             vars = vars .+ 1 # switch to julia indexing from 1
             scalar = parse(Float64, line[comparator_start+2:end])
-            println("Coeffs: ", coeffs, " Vars: ", vars, " Scalar: ", scalar)
 
             if (var_char == 'x')
                 @assert (length(coeffs) == 1 && coeffs[1] == 1.0)  # make sure that we only have upper or lower bounds on the input
@@ -202,8 +196,6 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
 
     # Return an output objective problem
     @assert !(output_obj && min_adv) "Both output and min_adv objectives found in file"
-    println("lower: ", input_lower)
-    println("Upper: ", input_upper)
     if (output_obj)
         return OutputOptimizationProblem(
                                             network=network,
@@ -689,7 +681,7 @@ function optimize(main_solver, tightening_solver, problem::MinPerturbationProble
 	A, b = tosimplehrep(problem.output)
 	for i in 1:size(A, 1)
 		row = A[i, :]
-		@constraint(opt_problem.model, row * opt_problem.output_variable <= b[i])
+		@constraint(opt_problem.model, sum(row .* opt_problem.output_variable) <= b[i])
 	end
 
 	# Introduce the optimization variable epsilon
@@ -699,8 +691,10 @@ function optimize(main_solver, tightening_solver, problem::MinPerturbationProble
 	@constraint(opt_problem.model, epsilon <= maximum(problem.input.radius))
 	println("Constraining to be less than: ", maximum(problem.input.radius))
 
-	for dim in dims
-		@constraint(opt_problem.model, -epsilon <= opt_problem.input_variable[dim] - problem.center[dim] <= epsilon)
+	for dim in problem.dims
+		# -epsilon <= opt_problem.input_variable[dim] - problem.center[dim] <= epsilon
+		@constraint(opt_problem.model, opt_problem.input_variable[dim] - problem.center[dim] <= epsilon)
+		@constraint(opt_problem.model, problem.center[dim] - opt_problem.input_variable[dim] <= epsilon)
 		println("Constraining dim ", dim)
 	end
 
@@ -715,13 +709,14 @@ function optimize(main_solver, tightening_solver, problem::MinPerturbationProble
 	status = solve(opt_problem.model)
 	main_solve_time = CPUtoc()
 
-	if (status == :Infeasible)
-	      return MinPerturbationResult(:none_found, [Inf], Inf), preprocess_time, main_solve_time
+	if (status == :Infeasible || status == :InfeasibleOrUnbounded)
+		return MinPerturbationResult(:infeasible, [Inf], Inf), preprocess_time, main_solve_time
 	elseif (status == :Optimal)
-		  opt_input = getvalue.(opt_problem.input_variable)
-		  opt_objective = getobjectivevalue(opt_problem.model)
-		  return MinPerturbationResult(:success, opt_input, opt_objective), preprocess_time, main_solve_time
+		opt_input = getvalue.(opt_problem.input_variable)
+		opt_objective = getobjectivevalue(opt_problem.model)
+		return MinPerturbationResult(:success, opt_input, opt_objective), preprocess_time, main_solve_time
 	else
+		println("Status: ", status)
 		@assert "Unknown status, throwing error"
 	end
 end

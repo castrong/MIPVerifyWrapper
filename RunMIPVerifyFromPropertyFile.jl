@@ -14,7 +14,7 @@
 	--environment_path /Users/castrong/Desktop/Research/NeuralOptimization.jl --optimizer MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0 --network_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/ACASXU_experimental_v2a_1_2.nnet --property_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/acas_property_optimization_4.txt --result_file /Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0.ACASXU_experimental_v2a_1_2.acas_property_optimization_4.txt
 
     module test
-           ARGS = ["--environment_path", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/", "--optimizer", "MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0", "--network_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/ACASXU_experimental_v2a_1_2.nnet", "--property_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/acas_property_optimization_4.txt", "--result_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=2.0.AutoTaxi_32Relus_200Epochs_OneOutput.autotaxi_property_AutoTaxi_17201_transposed_0.01_max.txt"]
+           ARGS = ["--environment_path", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/", "--optimizer", "MIPVerify_optimizer=Gurobi.Optimizer_threads=1_strategy=mip_preprocesstimeoutpernode=1.0", "--network_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Networks/ACASXU_experimental_v2a_1_2.nnet", "--property_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Properties/acas_property_optimization_4.txt", "--result_file", "/Users/castrong/Desktop/Research/NeuralOptimization.jl/BenchmarkOutput/test_benchmark/Results/test.txt"]
  	   	   include("/Users/castrong/Desktop/Research/MIPVerifyWrapper/RunMIPVerifyFromPropertyFile.jl")
 	end
 
@@ -155,24 +155,30 @@ if !isfile(result_file)
 	result, preprocess_time, main_solve_time = optimize(main_solver, tightening_solver, problem)
 	elapsed_time = preprocess_time + main_solve_time
 
-	optimal_output = compute_output(network, result.input)
+	optimal_output = [Inf]
+	if (result.status == :success)
+		optimal_output = compute_output(network, result.input)
+	end
 
 	println("Optimal input: ", result.input)
-	println("Optimal output: ", result.objective_value)
-	println("Output from mipverify network: ", mipverify_network(result.input))
-	println("output from other network: ", compute_output(network, result.input))
+	println("Optimal Objective: ", result.objective_value)
+	if (result.status == :success)
+		println("Output from mipverify network: ", mipverify_network(result.input))
+		println("output from other network: ", optimal_output)
+	end
 
 	open(result_file, "w") do f
 		# Writeout our results - for the optimal output we remove the brackets on the list
-		print(f, result.status == :success ? "success" : "none_found", ",") # status
+		print(f, string(result.status), ",") # status
 		print(f, string(result.objective_value), ",") # objective value
 		print(f, string(elapsed_time), ",") # elapsed time
 		println(f, string(preprocess_time)) # preprocessing time, end this line
 
 		# We assume it was successful here
-		println(f, string(result.input)[2:end-1]) # Write optimal input on its own line
-		println(f, string(optimal_output)[2:end-1])# Write optimal output on its own line
-
+		if (result.status == :success)
+			println(f, string(result.input)[2:end-1]) # Write optimal input on its own line
+			println(f, string(optimal_output)[2:end-1])# Write optimal output on its own line
+		end
 		close(f)
 	end
 
