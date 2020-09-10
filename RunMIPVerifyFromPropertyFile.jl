@@ -94,6 +94,16 @@ include(string(environment_path, "util.jl"))
 if !isfile(result_file)
 
 	# Run a simple problem to avoid startup time being counted
+	simple_nnet = read_nnet(joinpath(environment_path, "./Networks/small_nnet.nnet"))
+	simple_objective = LinearObjective([1.0], [1])
+	simple_input = Hyperrectangle([1.0], [1.0])
+	simple_problem = OutputOptimizationProblem(network=simple_nnet, input=simple_input, objective=simple_objective, max=true, lower=-Inf,upper=Inf)
+	simple_input_problem = MinPerturbationProblem(network=simple_nnet, input=simple_input, center = [0.5], target = 1, dims=[1], output = HPolytope([HalfSpace([1.0], 5.0)]), norm_order=Inf)
+	time_temp = @elapsed result = optimize(GurobiSolver(), GurobiSolver(), simple_problem)
+	time_temp_2 = @elapsed result = optimize(GurobiSolver(), GurobiSolver(), simple_input_problem)
+	println("Simple problem ran in: ", time_temp)
+	println("Time temp 2: ", time_temp_2)
+
 	start_time = time()
 	println("Starting simple example")
 	simple_nnet = read_nnet(joinpath(environment_path, "Networks/small_nnet.nnet"))
@@ -132,7 +142,6 @@ if !isfile(result_file)
 	println("network file: ", network_file)
 	network = read_nnet(network_file)
 	mipverify_network = network_to_mipverify_network(network, "label", strategy)
-	num_inputs = size(network.layers[1].weights, 2)
 
 	if occursin("mnist", network_file)
 		println("MNIST network")
@@ -149,7 +158,6 @@ if !isfile(result_file)
 	else
 		@assert false "Network category unrecognized"
 	end
-
 
 	problem = property_file_to_problem(property_file, network, lower, upper)
 	result, preprocess_time, main_solve_time = optimize(main_solver, tightening_solver, problem)

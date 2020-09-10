@@ -631,35 +631,36 @@ end
 
 
 function optimize(main_solver, tightening_solver, problem::OutputOptimizationProblem)
-		input_set, objective, maximize_objective = problem.input, problem.objective, problem.max
+	input_set, objective, maximize_objective = problem.input, problem.objective, problem.max
+	num_inputs = size(network.layers[1].weights, 2)
 
-		CPUtic()
-		opt_problem = get_optimization_problem(
-		      (num_inputs,),
-		      mipverify_network,
-		      main_solver,
-		      lower_bounds=low(input_set),
-		      upper_bounds=high(input_set),
-			  tightening_solver=tightening_solver,
-			  summary_file_name=string(result_file, ".bounds.txt")
-		      )
+	CPUtic()
+	opt_problem = get_optimization_problem(
+	      (num_inputs,),
+	      mipverify_network,
+	      main_solver,
+	      lower_bounds=low(input_set),
+	      upper_bounds=high(input_set),
+		  tightening_solver=tightening_solver,
+		  summary_file_name=string(result_file, ".bounds.txt")
+	      )
 
-		preprocess_time = CPUtoc()
-		CPUtic()
+	preprocess_time = CPUtoc()
+	CPUtic()
 
-		# Appropriately setting the objective
-		if maximize_objective
-			@objective(opt_problem.model, Max, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
-		else
-			@objective(opt_problem.model, Min, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
-		end
-		# Perform the optimization then pull out the objective value and elapsed time
-		solve(opt_problem.model)
-		main_solve_time = CPUtoc()
+	# Appropriately setting the objective
+	if maximize_objective
+		@objective(opt_problem.model, Max, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
+	else
+		@objective(opt_problem.model, Min, sum(opt_problem.output_variable[objective.variables] .* objective.coefficients))
+	end
+	# Perform the optimization then pull out the objective value and elapsed time
+	solve(opt_problem.model)
+	main_solve_time = CPUtoc()
 
-		opt_input = getvalue.(opt_problem.input_variable)
-		opt_objective = getobjectivevalue(opt_problem.model)
-		return Result(:success, opt_input, opt_objective), preprocess_time, main_solve_time
+	opt_input = getvalue.(opt_problem.input_variable)
+	opt_objective = getobjectivevalue(opt_problem.model)
+	return Result(:success, opt_input, opt_objective), preprocess_time, main_solve_time
 end
 
 function optimize(main_solver, tightening_solver, problem::MinPerturbationProblem)
