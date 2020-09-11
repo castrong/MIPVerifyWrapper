@@ -89,37 +89,8 @@ include(string(environment_path, "network.jl"))
 include(string(environment_path, "problem.jl"))
 include(string(environment_path, "util.jl"))
 
-
 # If the result file is already there do nothing
 if !isfile(result_file)
-
-	# Run a simple problem to avoid startup time being counted
-	simple_nnet = read_nnet(joinpath(environment_path, "./Networks/small_nnet.nnet"))
-	simple_objective = LinearObjective([1.0], [1])
-	simple_input = Hyperrectangle([1.0], [1.0])
-	simple_problem = OutputOptimizationProblem(network=simple_nnet, input=simple_input, objective=simple_objective, max=true, lower=-Inf,upper=Inf)
-	simple_input_problem = MinPerturbationProblem(network=simple_nnet, input=simple_input, center = [0.5], target = 1, dims=[1], output = HPolytope([HalfSpace([1.0], 5.0)]), norm_order=Inf)
-	time_temp = @elapsed result = optimize(GurobiSolver(), GurobiSolver(), simple_problem)
-	time_temp_2 = @elapsed result = optimize(GurobiSolver(), GurobiSolver(), simple_input_problem)
-	println("Simple problem ran in: ", time_temp)
-	println("Time temp 2: ", time_temp_2)
-
-	start_time = time()
-	println("Starting simple example")
-	simple_nnet = read_nnet(joinpath(environment_path, "Networks/small_nnet.nnet"))
-	simple_mipverify_network = network_to_mipverify_network(simple_nnet)
-	temp_p = get_optimization_problem(
-	      (1,),
-	      simple_mipverify_network,
-	      GurobiSolver(),
-	      lower_bounds=[0.0],
-	      upper_bounds=[1.0],
-	      )
-	@objective(temp_p.model, Max, temp_p.output_variable[1])
-	solve(temp_p.model)
-	println("Finished simple solve in: ", time() - start_time)
-
-
 	# A problem needs a network, input set, objective and whether to maximize or minimize.
 	# it also takes in the lower and upper bounds on the network input variables which describe
 	# the domain of the network.
@@ -138,6 +109,19 @@ if !isfile(result_file)
 	else
 		@assert false "Only supporting Gurobi for now - just would need to fill in this else with a proper constructor"
 	end
+
+	# Run a simple problem to avoid startup time being counted
+	simple_nnet = read_nnet(joinpath(environment_path, "./Networks/small_nnet.nnet"))
+	simple_objective = LinearObjective([1.0], [1])
+	simple_input = Hyperrectangle([1.0], [1.0])
+	simple_problem = OutputOptimizationProblem(network=simple_nnet, input=simple_input, objective=simple_objective, max=true, lower=-Inf,upper=Inf)
+	simple_input_problem = MinPerturbationProblem(network=simple_nnet, input=simple_input, center = [0.5], target = 1, dims=[1], output = HPolytope([HalfSpace([1.0], 5.0)]), norm_order=Inf)
+	time_simple_output = @elapsed result_output = optimize(main_solver, tightening_solver, simple_problem)
+	time_simple_input = @elapsed result_input = optimize(main_solver, tightening_solver, simple_input_problem)
+	println("Simple output problem ran in: ", time_simple_output)
+	println("Simple input problem ran in: ", time_simple_input)
+	println("Simple output problem result: ", result_output)
+	println("Simple min problem result: ", result_input)
 
 	println("network file: ", network_file)
 	network = read_nnet(network_file)
@@ -160,7 +144,7 @@ if !isfile(result_file)
 	end
 
 	problem = property_file_to_problem(property_file, network, lower, upper)
-	result, preprocess_time, main_solve_time = optimize(main_solver, tightening_solver, problem)
+	result, preprocess_time, main_solve_time = optimize(mipverify_network, main_solver, tightening_solver, problem)
 	elapsed_time = preprocess_time + main_solve_time
 
 	optimal_output = [Inf]

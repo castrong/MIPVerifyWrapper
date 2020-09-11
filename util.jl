@@ -157,7 +157,7 @@ function property_file_to_problem(filename::String, network::Network, lower::Flo
             if (line == "all")
                 dims = collect(1:num_inputs)
             else
-                dims = parse.(Int64, split(line, ","))
+				dims = parse.(Int64, split(line, ",")) .+ 1 # switch to julia indexing from 1
             end
         elseif occursin("Center", line)
             center = parse.(Float64, split(line[length("Center")+1:end], ","))
@@ -630,8 +630,8 @@ function parse_mipverify_string(optimizer_string)
 end
 
 
-function optimize(main_solver, tightening_solver, problem::OutputOptimizationProblem)
-	input_set, objective, maximize_objective = problem.input, problem.objective, problem.max
+function optimize(mipverify_network, main_solver, tightening_solver, problem::OutputOptimizationProblem)
+	network, input_set, objective, maximize_objective = problem.network, problem.input, problem.objective, problem.max
 	num_inputs = size(network.layers[1].weights, 2)
 
 	CPUtic()
@@ -663,7 +663,7 @@ function optimize(main_solver, tightening_solver, problem::OutputOptimizationPro
 	return Result(:success, opt_input, opt_objective), preprocess_time, main_solve_time
 end
 
-function optimize(main_solver, tightening_solver, problem::MinPerturbationProblem)
+function optimize(mipverify_network, main_solver, tightening_solver, problem::MinPerturbationProblem)
 	CPUtic()
 	opt_problem = get_optimization_problem(
 		  (num_inputs,),
