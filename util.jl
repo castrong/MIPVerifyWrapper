@@ -665,6 +665,7 @@ end
 
 function optimize(mipverify_network, main_solver, tightening_solver, problem::MinPerturbationProblem)
 	CPUtic()
+	num_inputs = size(problem.network.layers[1].weights, 2)
 	opt_problem = get_optimization_problem(
 		  (num_inputs,),
 		  mipverify_network,
