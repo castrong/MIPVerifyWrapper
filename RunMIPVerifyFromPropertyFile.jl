@@ -112,7 +112,7 @@ if !isfile(result_file)
 
 	# Run a simple problem to avoid startup time being counted
 	simple_nnet = read_nnet(joinpath(environment_path, "./Networks/small_nnet.nnet"))
-	simple_mipverify_net = network_to_mipverify_network(simple_nnet, lable, strategy)
+	simple_mipverify_net = network_to_mipverify_network(simple_nnet, "label_simple", strategy)
 	simple_objective = LinearObjective([1.0], [1])
 	simple_input = Hyperrectangle([1.0], [1.0])
 	simple_output_problem = OutputOptimizationProblem(network=simple_nnet, input=simple_input, objective=simple_objective, max=true, lower=-Inf,upper=Inf)
